@@ -66,13 +66,37 @@ HIDE_ANCHORS_CSS = """
 <style>
     .stAppDeployButton { display: none; }
     h1 > a, h2 > a, h3 > a, h4 > a { display: none !important; }
-    button[title="Eliminar par"] {
-        padding: 0px 4px !important;
-        min-width: 24px !important;
-        width: 24px !important;
-        height: 24px !important;
-        line-height: 1 !important;
-        font-size: 14px !important;
+    /* Boton eliminar: oculto, aparece al hacer hover sobre el mensaje */
+    [data-testid="stChatMessage"] {
+        position: relative !important;
+        padding-left: 12px !important;
+    }
+    [data-testid="stChatMessage"] .stButton {
+        visibility: hidden;
+        position: absolute !important;
+        left: -6px !important;
+        top: 6px !important;
+        z-index: 10 !important;
+    }
+    [data-testid="stChatMessage"]:hover .stButton {
+        visibility: visible !important;
+    }
+    [data-testid="stChatMessage"] button {
+        padding: 0px 3px !important;
+        min-width: 18px !important;
+        width: 18px !important;
+        height: 18px !important;
+        line-height: 14px !important;
+        font-size: 11px !important;
+        background: transparent !important;
+        border: 1px solid #ddd !important;
+        border-radius: 3px !important;
+        color: #999 !important;
+    }
+    [data-testid="stChatMessage"] button:hover {
+        color: #e74c3c !important;
+        border-color: #e74c3c !important;
+        background: #fff !important;
     }
 </style>
 """
@@ -219,13 +243,10 @@ def mostrar_chat():
         q_msg = st.session_state.messages[i]
 
         with st.chat_message("user"):
-            col1, col2 = st.columns([20, 1])
-            with col1:
-                st.markdown(q_msg["content"])
-            with col2:
-                if st.button("✕", key=f"del_{i}", help="Eliminar par"):
-                    st.session_state.confirm_delete = i
-                    st.rerun()
+            st.markdown(q_msg["content"])
+            if st.button("✕", key=f"del_{i}", help="Eliminar par"):
+                st.session_state.confirm_delete = i
+                st.rerun()
 
         if st.session_state.get("confirm_delete") == i:
             with st.container():
