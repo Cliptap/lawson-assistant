@@ -30,6 +30,7 @@ EMBEDDING_MODEL = "nomic-embed-text"
 LLM_MODEL = "mistral"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
+MAX_PDF_PAGES = 15
 TOP_K = 4
 SIMILARITY_THRESHOLD = 0.3
 
@@ -66,15 +67,16 @@ HIDE_ANCHORS_CSS = """
 <style>
     .stAppDeployButton { display: none; }
     h1 > a, h2 > a, h3 > a, h4 > a { display: none !important; }
-    /* Boton eliminar: invisible, aparece al hover sobre el mensaje */
+    /* Boton eliminar: afuera a la izquierda, invisible hasta hover */
+    [data-testid="stChatMessage"] {
+        position: relative !important;
+    }
     [data-testid="stChatMessage"] .stButton {
         opacity: 0;
         transition: opacity 0.15s;
-        float: right;
-        margin-top: -6px;
-        margin-right: -4px;
-        margin-bottom: -18px;
-        position: relative;
+        position: absolute !important;
+        left: -20px !important;
+        top: 6px !important;
         z-index: 5;
     }
     [data-testid="stChatMessage"]:hover .stButton {
@@ -85,7 +87,8 @@ HIDE_ANCHORS_CSS = """
         min-width: 16px !important;
         width: 16px !important;
         height: 16px !important;
-        line-height: 15px !important;
+        min-height: 16px !important;
+        line-height: 16px !important;
         font-size: 10px !important;
         background: transparent !important;
         border: none !important;
@@ -168,13 +171,19 @@ def load_and_ingest(data_dir: str = DATA_DIR) -> tuple[int, int]:
 
         if ext in (".txt", ".md"):
             loader = TextLoader(filepath, encoding="utf-8")
+            loaded = loader.load()
+            for doc in loaded:
+                doc.metadata["source"] = filename
+            documents.extend(loaded)
         else:
+            from pypdf import PdfReader
+            reader = PdfReader(filepath)
+            pages_to_load = min(len(reader.pages), MAX_PDF_PAGES)
             loader = PyPDFLoader(filepath)
-
-        loaded = loader.load()
-        for doc in loaded:
-            doc.metadata["source"] = filename
-        documents.extend(loaded)
+            loaded = loader.load()
+            for doc in loaded[:pages_to_load]:
+                doc.metadata["source"] = filename
+            documents.extend(loaded[:pages_to_load])
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,

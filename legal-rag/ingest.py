@@ -14,18 +14,29 @@ EMBEDDING_MODEL = "nomic-embed-text"
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
+MAX_PDF_PAGES = 15
 
 
 def load_documents(data_dir: str) -> list:
     docs = []
-    for filename in os.listdir(data_dir):
+    for filename in sorted(os.listdir(data_dir)):
         filepath = os.path.join(data_dir, filename)
         ext = os.path.splitext(filename)[1].lower()
 
         if ext == ".txt" or ext == ".md":
             loader = TextLoader(filepath, encoding="utf-8")
         elif ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(filepath)
+            total_pages = len(reader.pages)
+            pages_to_load = min(total_pages, MAX_PDF_PAGES)
             loader = PyPDFLoader(filepath)
+            loaded = loader.load()
+            for doc in loaded[:pages_to_load]:
+                doc.metadata["source"] = filename
+            docs.extend(loaded[:pages_to_load])
+            print(f"  [OK] Cargado: {filename} ({pages_to_load}/{total_pages} paginas)")
+            continue
         else:
             print(f"  [SKIP] Formato no soportado: {filename}")
             continue
