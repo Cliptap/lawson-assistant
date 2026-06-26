@@ -1,0 +1,29 @@
+# ECC Harness files
+.opencode/
+AGENTS.md
+agents/
+CLAUDE.md
+commands/
+config/
+CONTRIBUTING.md
+ecc-clone/
+hooks/
+mcp-configs/
+RULES.md
+rules/
+scripts/
+skills/
+SOUL.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ChromaDB (se regenera con ingest.py)
+legal-rag/chroma_db/
+
+# Environment
+.env
+.venv/
+venv/

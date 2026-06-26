@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    container_name: legal-rag-app
+    ports:
+      - "8501:8501"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
