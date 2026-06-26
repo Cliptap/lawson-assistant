@@ -11,16 +11,16 @@ from langchain_core.runnables import RunnablePassthrough
 CHROMA_DIR = "chroma_db"
 EMBEDDING_MODEL = "nomic-embed-text"
 LLM_MODEL = "mistral"
-TOP_K = 3
-SIMILARITY_THRESHOLD = 0.64
+TOP_K = 4
+SIMILARITY_THRESHOLD = 0.30
 
 PROMPT_TEMPLATE = """Eres un asistente legal especializado. Responde la pregunta basandote UNICAMENTE en el contexto legal proporcionado a continuacion.
 
 REGLAS:
-1. Si el contexto no contiene informacion suficiente para responder, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
-2. Descarta fragmentos de leyes o documentos que no guarden relacion directa con la pregunta.
-3. Cita SIEMPRE la ley especifica y el numero de articulo correspondiente (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
-4. Si un fragmento no menciona un numero de articulo o ley, no lo uses para responder.
+1. Si el contexto no contiene informacion suficiente, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
+2. ANTES de usar un fragmento, verifica que el area legal del documento coincida con el tema de la pregunta. Ejemplo: si preguntan sobre derechos del consumidor, ignora fragmentos de leyes de proteccion de datos personales o normativa laboral.
+3. Cita SIEMPRE el nombre completo de la ley y el numero de articulo (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
+4. Si un fragmento no menciona explicitamente un numero de articulo o el nombre de una ley, no lo uses.
 5. Responde en espanol, de forma clara y precisa.
 
 Contexto:
@@ -55,19 +55,10 @@ def main():
     print("=" * 60)
 
     vectorstore = load_vectorstore()
-    retriever = vectorstore.as_retriever(
-        search_kwargs={"k": TOP_K}
-    )
 
     llm = ChatOllama(model=LLM_MODEL, temperature=0.1)
     prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-
-    chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+    chain = prompt | llm | StrOutputParser()
 
     print("\nAsistente listo.\n")
 
@@ -106,7 +97,8 @@ def main():
         print("Respuesta:")
 
         try:
-            response = chain.invoke(question)
+            context = format_docs(relevant_docs)
+            response = chain.invoke({"context": context, "question": question})
             print(f"\n{response}\n")
         except Exception as e:
             print(f"\n[ERROR] Fallo al generar respuesta: {e}\n")

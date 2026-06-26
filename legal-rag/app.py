@@ -31,16 +31,16 @@ LLM_MODEL = "mistral"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 MAX_PDF_PAGES = 15
-TOP_K = 3
-SIMILARITY_THRESHOLD = 0.64
+TOP_K = 4
+SIMILARITY_THRESHOLD = 0.30
 
 PROMPT_TEMPLATE = """Eres un asistente legal especializado. Responde la pregunta basandote UNICAMENTE en el contexto legal proporcionado a continuacion.
 
 REGLAS:
-1. Si el contexto no contiene informacion suficiente para responder, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
-2. Descarta fragmentos de leyes o documentos que no guarden relacion directa con la pregunta.
-3. Cita SIEMPRE la ley especifica y el numero de articulo correspondiente (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
-4. Si un fragmento no menciona un numero de articulo o ley, no lo uses para responder.
+1. Si el contexto no contiene informacion suficiente, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
+2. ANTES de usar un fragmento, verifica que el area legal del documento coincida con el tema de la pregunta. Ejemplo: si preguntan sobre derechos del consumidor, ignora fragmentos de leyes de proteccion de datos personales o normativa laboral.
+3. Cita SIEMPRE el nombre completo de la ley y el numero de articulo (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
+4. Si un fragmento no menciona explicitamente un numero de articulo o el nombre de una ley, no lo uses.
 5. Responde en espanol, de forma clara y precisa.
 
 Contexto:
@@ -233,18 +233,14 @@ def query_rag(question: str):
         return ("No encontre informacion suficiente en los documentos "
                 "disponibles para responder esta consulta."), []
 
-    retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
+    filtered_docs = [doc for doc, _ in relevant]
+    context = format_docs(filtered_docs)
+
     llm = get_llm()
     prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
 
-    chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-
-    response = chain.invoke(question)
+    chain = prompt | llm | StrOutputParser()
+    response = chain.invoke({"context": context, "question": question})
 
     fragments = [
         (doc.page_content[:300] + ("..." if len(doc.page_content) > 300 else ""),
