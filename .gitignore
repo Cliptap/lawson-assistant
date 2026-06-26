@@ -23,6 +23,9 @@ __pycache__/
 # ChromaDB (se regenera con ingest.py)
 legal-rag/chroma_db/
 
+# Chat history (local)
+legal-rag/chat_history.json
+
 # Environment
 .env
 .venv/

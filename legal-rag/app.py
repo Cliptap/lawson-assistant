@@ -4,8 +4,8 @@ Caso 3: Asistente Legal - Evaluacion Sumativa
 """
 import streamlit as st
 import os
+import json
 import shutil
-from pathlib import Path
 
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -23,6 +23,7 @@ st.set_page_config(
 
 DATA_DIR = "data"
 CHROMA_DIR = "chroma_db"
+HISTORY_FILE = "chat_history.json"
 EMBEDDING_MODEL = "nomic-embed-text"
 LLM_MODEL = "mistral"
 CHUNK_SIZE = 500
@@ -43,6 +44,22 @@ Pregunta: {question}
 
 Respuesta:"""
 
+EJEMPLOS = {
+    "Simple": [
+        "¿Qué establece la Ley 19.628 sobre el consentimiento?",
+        "¿Cuáles son los derechos del consumidor?",
+        "¿Cuántas horas máximas dura la jornada laboral?",
+    ],
+    "Compleja": [
+        "¿Qué derechos tiene un consumidor con un producto defectuoso y qué obligaciones tiene el empleador con los datos personales de sus trabajadores?",
+        "¿En qué casos termina el contrato de trabajo sin indemnización y cuánto debe pagarse cuando sí corresponde?",
+    ],
+    "Sin respuesta": [
+        "¿Cuál es el procedimiento para registrar una patente en Chile?",
+        "¿Cómo se tramita una visa de trabajo?",
+    ],
+}
+
 
 def format_docs(docs):
     return "\n\n".join(
@@ -61,8 +78,28 @@ def get_llm():
     return ChatOllama(model=LLM_MODEL, temperature=0.1)
 
 
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def save_history(messages):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(messages, f, ensure_ascii=False, indent=2)
+
+
+def delete_message_pair(idx):
+    if 0 <= idx < len(st.session_state.messages):
+        del st.session_state.messages[idx]
+        if idx < len(st.session_state.messages):
+            del st.session_state.messages[idx]
+        save_history(st.session_state.messages)
+        st.rerun()
+
+
 def load_and_ingest(data_dir: str = DATA_DIR) -> tuple[int, int]:
-    """Carga documentos, genera chunks y los indexa en ChromaDB."""
     documents = []
     supported = {".txt", ".md", ".pdf"}
 
@@ -113,7 +150,6 @@ def load_vectorstore():
 
 
 def query_rag(question: str):
-    """Ejecuta el pipeline RAG completo y retorna respuesta + fuentes."""
     vectorstore = load_vectorstore()
 
     docs_with_scores = vectorstore.similarity_search_with_relevance_scores(
@@ -124,7 +160,7 @@ def query_rag(question: str):
 
     if not relevant:
         return ("No encontre informacion suficiente en los documentos "
-                "disponibles para responder esta consulta."), [], []
+                "disponibles para responder esta consulta."), []
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": TOP_K})
     llm = get_llm()
@@ -139,23 +175,88 @@ def query_rag(question: str):
 
     response = chain.invoke(question)
 
-    sources = []
-    seen = set()
-    for doc, score in relevant:
-        source = doc.metadata.get("source", "desconocida")
-        if source not in seen:
-            seen.add(source)
-            sources.append(source)
+    fragments = [
+        (doc.page_content[:300] + ("..." if len(doc.page_content) > 300 else ""),
+         score, doc.metadata.get("source", ""))
+        for doc, score in relevant
+    ]
 
-    fragments = [(doc.page_content[:300] + "...", score, doc.metadata.get("source", ""))
-                 for doc, score in relevant]
+    return response, fragments
 
-    return response, sources, fragments
+
+def mostrar_chat():
+    for i in range(0, len(st.session_state.messages), 2):
+        q_msg = st.session_state.messages[i]
+        with st.chat_message("user"):
+            col1, col2 = st.columns([20, 1])
+            with col1:
+                st.markdown(q_msg["content"])
+            with col2:
+                if st.button("✕", key=f"del_q_{i}", help="Eliminar par"):
+                    st.session_state.confirm_delete = i
+                    st.rerun()
+
+        if st.session_state.get("confirm_delete") == i:
+            with st.container():
+                st.warning("¿Eliminar esta conversación?")
+                c1, c2 = st.columns([1, 1])
+                with c1:
+                    if st.button("✓ Confirmar", key=f"confirm_{i}"):
+                        delete_message_pair(i)
+                with c2:
+                    if st.button("Cancelar", key=f"cancel_{i}"):
+                        st.session_state.confirm_delete = None
+                        st.rerun()
+
+        if i + 1 < len(st.session_state.messages):
+            a_msg = st.session_state.messages[i + 1]
+            with st.chat_message("assistant"):
+                col1, col2 = st.columns([20, 1])
+                with col1:
+                    st.markdown(a_msg["content"])
+                with col2:
+                    if st.button("✕", key=f"del_a_{i}", help="Eliminar par"):
+                        st.session_state.confirm_delete = i
+                        st.rerun()
+
+                if a_msg.get("fragments"):
+                    with st.expander("📎 Fragmentos recuperados"):
+                        for j, (text, score, src) in enumerate(a_msg["fragments"], 1):
+                            st.markdown(
+                                f"**Fragmento {j}** — `{src}`  "
+                                f"(similitud: {score:.2f})"
+                            )
+                            st.markdown(f"> {text}")
+                            st.divider()
+
+
+def enviar_pregunta(question: str):
+    st.session_state.messages.append({"role": "user", "content": question})
+    with st.spinner("Buscando en documentos..."):
+        response, fragments = query_rag(question)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response,
+        "fragments": fragments,
+    })
+    save_history(st.session_state.messages)
 
 
 def main():
-    st.title("⚖️ Asistente Legal RAG")
+    st.markdown(
+        "<style>"
+        ".stAppDeployButton { display: none; }"
+        "a[href='#asistente-legal-rag'] { display: none; }"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("# ⚖️ Asistente Legal RAG")
     st.caption("Caso 3: Asistente Legal — Evaluación Sumativa · IA Embebida")
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = load_history()
+    if "confirm_delete" not in st.session_state:
+        st.session_state.confirm_delete = None
 
     with st.sidebar:
         st.header("📁 Configuración")
@@ -190,82 +291,31 @@ def main():
         else:
             st.markdown("*No hay documentos.*")
 
-    col1, col2 = st.columns([3, 2])
+    col_chat, col_ejemplos = st.columns([3, 2])
 
-    with col1:
+    with col_chat:
         st.subheader("💬 Consulta")
-
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
-
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+        mostrar_chat()
 
         if prompt := st.chat_input("Escribe tu pregunta legal..."):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            enviar_pregunta(prompt)
+            st.rerun()
 
-            with st.chat_message("assistant"):
-                with st.spinner("Buscando en documentos..."):
-                    response, sources, fragments = query_rag(prompt)
-
-                st.markdown(response)
-
-                if fragments:
-                    with st.expander("📎 Fragmentos recuperados"):
-                        for i, (text, score, src) in enumerate(fragments, 1):
-                            st.markdown(f"**Fragmento {i}** — `{src}`  "
-                                        f"(similitud: {score:.2f})")
-                            st.markdown(f"> {text}")
-                            st.divider()
-
-    with col2:
+    with col_ejemplos:
         st.subheader("📋 Preguntas de ejemplo")
 
-        ejemplos = {
-            "Simple": [
-                "¿Qué establece la Ley 19.628 sobre el consentimiento?",
-                "¿Cuáles son los derechos del consumidor?",
-                "¿Cuántas horas máximas dura la jornada laboral?",
-            ],
-            "Compleja": [
-                "¿Qué derechos tiene un consumidor con un producto defectuoso y qué obligaciones tiene el empleador con los datos personales de sus trabajadores?",
-                "¿En qué casos termina el contrato de trabajo sin indemnización y cuánto debe pagarse cuando sí corresponde?",
-            ],
-            "Sin respuesta": [
-                "¿Cuál es el procedimiento para registrar una patente en Chile?",
-                "¿Cómo se tramita una visa de trabajo?",
-            ],
-        }
-
-        for categoria, preguntas in ejemplos.items():
+        for categoria, preguntas in EJEMPLOS.items():
             st.markdown(f"**{categoria}**")
             for p in preguntas:
                 if st.button(p, key=p[:50], use_container_width=True):
-                    st.session_state.messages.append(
-                        {"role": "user", "content": p}
-                    )
-                    with st.chat_message("user"):
-                        st.markdown(p)
-                    with st.chat_message("assistant"):
-                        with st.spinner("Buscando..."):
-                            resp, srcs, frags = query_rag(p)
-                        st.markdown(resp)
-                        if frags:
-                            with st.expander("📎 Fragmentos recuperados"):
-                                for i, (text, score, src) in enumerate(frags, 1):
-                                    st.markdown(f"**Fragmento {i}** — `{src}`  "
-                                                f"(similitud: {score:.2f})")
-                                    st.markdown(f"> {text}")
-                                    st.divider()
+                    enviar_pregunta(p)
+                    st.rerun()
             st.divider()
 
-        st.markdown("---")
-        st.caption(
-            "Arquitectura: Usuario → Embedding → ChromaDB → "
-            "Recuperación → LLM (Mistral 7B) → Respuesta + Fuentes"
+        st.markdown(
+            "<small style='color: gray;'>Arquitectura: Usuario → Embedding → "
+            "ChromaDB → Recuperación → LLM (Mistral 7B) → Respuesta + Fuentes</small>",
+            unsafe_allow_html=True,
         )
 
 
