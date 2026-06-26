@@ -103,8 +103,44 @@ HIDE_ANCHORS_CSS = """
         color: #e74c3c !important;
         background: rgba(231,76,60,0.08) !important;
     }
+    /* Citas legales clickeables */
+    .citation {
+        color: #2e7d32 !important;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .citation:hover {
+        text-decoration: underline;
+        color: #1b5e20 !important;
+    }
 </style>
 """
+
+
+def highlight_citations(text, fragments):
+    import re
+    patron = r'\((?:Articulo|artículo|Artículo|LEY|Ley|ley)\s+\d+[^)]*\)'
+    text = re.sub(
+        patron,
+        lambda m, f=fragments: (
+            f'<a class="citation" href="#frag-{_best_frag(m.group(0), f)}">'
+            f'{m.group(0)}</a>'
+        ),
+        text,
+    )
+    return text
+
+
+def _best_frag(citation, fragments):
+    import re
+    nums = re.findall(r'\d+', citation)
+    if nums:
+        num = nums[0]
+        for i, (content, _, _) in enumerate(fragments):
+            if num in content:
+                return i + 1
+    return 1
 
 
 def format_docs(docs):
@@ -276,14 +312,22 @@ def mostrar_chat():
         if i + 1 < len(st.session_state.messages):
             a_msg = st.session_state.messages[i + 1]
             with st.chat_message("assistant"):
-                st.markdown(a_msg["content"])
+                fragments = a_msg.get("fragments", [])
+                if fragments:
+                    content = highlight_citations(a_msg["content"], fragments)
+                else:
+                    content = a_msg["content"]
+                st.markdown(content, unsafe_allow_html=True)
 
-                if a_msg.get("fragments"):
+                if fragments:
                     with st.expander("📎 Fragmentos recuperados"):
-                        for j, (text, score, src) in enumerate(a_msg["fragments"], 1):
+                        for j, (text, score, src) in enumerate(fragments, 1):
                             st.markdown(
+                                f'<div id="frag-{j}">'
                                 f"**Fragmento {j}** — `{src}`  "
                                 f"(similitud: {score:.2f})"
+                                f"</div>",
+                                unsafe_allow_html=True,
                             )
                             st.markdown(f"> {text}")
                             st.divider()
