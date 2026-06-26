@@ -74,12 +74,6 @@ streamlit run app.py
 
 Abrir http://localhost:8501
 
-### Docker
-
-```bash
-docker compose up --build
-```
-
 ## 📂 Estructura del proyecto
 
 ```
