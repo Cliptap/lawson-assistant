@@ -140,20 +140,21 @@ def delete_message_pair(idx):
 
 def load_and_ingest(data_dir: str = DATA_DIR) -> tuple[int, int]:
     if os.path.exists(CHROMA_DIR):
-        try:
-            client = chromadb.PersistentClient(path=CHROMA_DIR)
-            try:
-                client.delete_collection("langchain")
-            except (ValueError, Exception):
-                pass
-        except Exception:
-            pass
         st.cache_resource.clear()
         gc.collect()
         time.sleep(0.5)
 
-        import shutil
-        shutil.rmtree(CHROMA_DIR)
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_DIR)
+            for col in client.list_collections():
+                try:
+                    client.delete_collection(col.name)
+                except Exception:
+                    pass
+            del client
+            gc.collect()
+        except Exception:
+            pass
 
     documents = []
     supported = {".txt", ".md", ".pdf"}
