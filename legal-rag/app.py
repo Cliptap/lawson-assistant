@@ -5,7 +5,9 @@ Caso 3: Asistente Legal - Evaluacion Sumativa
 import streamlit as st
 import os
 import json
-import shutil
+import gc
+import time
+import chromadb
 
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -60,6 +62,21 @@ EJEMPLOS = {
     ],
 }
 
+HIDE_ANCHORS_CSS = """
+<style>
+    .stAppDeployButton { display: none; }
+    h1 > a, h2 > a, h3 > a, h4 > a { display: none !important; }
+    button[title="Eliminar par"] {
+        padding: 0px 4px !important;
+        min-width: 24px !important;
+        width: 24px !important;
+        height: 24px !important;
+        line-height: 1 !important;
+        font-size: 14px !important;
+    }
+</style>
+"""
+
 
 def format_docs(docs):
     return "\n\n".join(
@@ -100,6 +117,22 @@ def delete_message_pair(idx):
 
 
 def load_and_ingest(data_dir: str = DATA_DIR) -> tuple[int, int]:
+    if os.path.exists(CHROMA_DIR):
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_DIR)
+            try:
+                client.delete_collection("langchain")
+            except (ValueError, Exception):
+                pass
+        except Exception:
+            pass
+        st.cache_resource.clear()
+        gc.collect()
+        time.sleep(0.5)
+
+        import shutil
+        shutil.rmtree(CHROMA_DIR)
+
     documents = []
     supported = {".txt", ".md", ".pdf"}
 
@@ -128,9 +161,6 @@ def load_and_ingest(data_dir: str = DATA_DIR) -> tuple[int, int]:
     chunks = text_splitter.split_documents(documents)
 
     embeddings = get_embeddings()
-
-    if os.path.exists(CHROMA_DIR):
-        shutil.rmtree(CHROMA_DIR)
 
     Chroma.from_documents(
         documents=chunks,
@@ -187,12 +217,13 @@ def query_rag(question: str):
 def mostrar_chat():
     for i in range(0, len(st.session_state.messages), 2):
         q_msg = st.session_state.messages[i]
+
         with st.chat_message("user"):
             col1, col2 = st.columns([20, 1])
             with col1:
                 st.markdown(q_msg["content"])
             with col2:
-                if st.button("✕", key=f"del_q_{i}", help="Eliminar par"):
+                if st.button("✕", key=f"del_{i}", help="Eliminar par"):
                     st.session_state.confirm_delete = i
                     st.rerun()
 
@@ -211,13 +242,7 @@ def mostrar_chat():
         if i + 1 < len(st.session_state.messages):
             a_msg = st.session_state.messages[i + 1]
             with st.chat_message("assistant"):
-                col1, col2 = st.columns([20, 1])
-                with col1:
-                    st.markdown(a_msg["content"])
-                with col2:
-                    if st.button("✕", key=f"del_a_{i}", help="Eliminar par"):
-                        st.session_state.confirm_delete = i
-                        st.rerun()
+                st.markdown(a_msg["content"])
 
                 if a_msg.get("fragments"):
                     with st.expander("📎 Fragmentos recuperados"):
@@ -243,13 +268,7 @@ def enviar_pregunta(question: str):
 
 
 def main():
-    st.markdown(
-        "<style>"
-        ".stAppDeployButton { display: none; }"
-        "a[href='#asistente-legal-rag'] { display: none; }"
-        "</style>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(HIDE_ANCHORS_CSS, unsafe_allow_html=True)
     st.markdown("# ⚖️ Asistente Legal RAG")
     st.caption("Caso 3: Asistente Legal — Evaluación Sumativa · IA Embebida")
 
@@ -294,7 +313,7 @@ def main():
     col_chat, col_ejemplos = st.columns([3, 2])
 
     with col_chat:
-        st.subheader("💬 Consulta")
+        st.markdown("### 💬 Consulta")
         mostrar_chat()
 
         if prompt := st.chat_input("Escribe tu pregunta legal..."):
@@ -302,7 +321,7 @@ def main():
             st.rerun()
 
     with col_ejemplos:
-        st.subheader("📋 Preguntas de ejemplo")
+        st.markdown("### 📋 Preguntas de ejemplo")
 
         for categoria, preguntas in EJEMPLOS.items():
             st.markdown(f"**{categoria}**")
