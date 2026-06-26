@@ -213,10 +213,13 @@ def main():
 
                 st.markdown(response)
 
-                if sources:
-                    with st.expander("📎 Fuentes consultadas"):
-                        for s in sources:
-                            st.markdown(f"- {s}")
+                if fragments:
+                    with st.expander("📎 Fragmentos recuperados"):
+                        for i, (text, score, src) in enumerate(fragments, 1):
+                            st.markdown(f"**Fragmento {i}** — `{src}`  "
+                                        f"(similitud: {score:.2f})")
+                            st.markdown(f"> {text}")
+                            st.divider()
 
     with col2:
         st.subheader("📋 Preguntas de ejemplo")
@@ -250,10 +253,13 @@ def main():
                         with st.spinner("Buscando..."):
                             resp, srcs, frags = query_rag(p)
                         st.markdown(resp)
-                        if srcs:
-                            with st.expander("📎 Fuentes"):
-                                for s in srcs:
-                                    st.markdown(f"- {s}")
+                        if frags:
+                            with st.expander("📎 Fragmentos recuperados"):
+                                for i, (text, score, src) in enumerate(frags, 1):
+                                    st.markdown(f"**Fragmento {i}** — `{src}`  "
+                                                f"(similitud: {score:.2f})")
+                                    st.markdown(f"> {text}")
+                                    st.divider()
             st.divider()
 
         st.markdown("---")

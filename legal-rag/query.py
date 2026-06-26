@@ -109,13 +109,14 @@ def main():
             print(f"\n[ERROR] Fallo al generar respuesta: {e}\n")
 
         print("-" * 60)
-        print("Fuentes consultadas:")
+        print("Fragmentos recuperados:")
         seen = set()
-        for doc in relevant_docs:
+        for i, (doc, score) in enumerate(docs_with_scores, 1):
+            if score < SIMILARITY_THRESHOLD:
+                continue
             source = doc.metadata.get("source", "desconocida")
-            if source not in seen:
-                seen.add(source)
-                print(f"  - {source}")
+            print(f"\n  [{i}] {source}  (similitud: {score:.2f})")
+            print(f"      \"{doc.page_content[:300]}{'...' if len(doc.page_content) > 300 else ''}\"")
         print("-" * 60 + "\n")
 
 
