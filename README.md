@@ -5,19 +5,44 @@ Caso 3: Asistente Legal · Ingeniería Informática
 
 Asistente basado en arquitectura **RAG** (Retrieval Augmented Generation) que permite consultar normativa legal chilena utilizando documentos propios del dominio jurídico. Corre 100% local con Ollama.
 
-## 🧱 Arquitectura
+## 🧱 Arquitectura y decisiones de diseño
 
 ```
-Usuario → Embedding → ChromaDB → Recuperación → LLM (Mistral 7B) → Respuesta + Fuentes
+Usuario ──► Embedding ──► ChromaDB ──► Recuperación ──► Mistral 7B ──► Respuesta + Fuentes
+                 ▲                               │
+                 └─── mismo modelo ──────────────┘
 ```
 
-| Componente | Tecnología |
-|------------|------------|
-| Embeddings | nomic-embed-text (Ollama) |
-| Base Vectorial | ChromaDB |
-| Chunking | RecursiveCharacterTextSplitter (500 chars, overlap 100) |
-| LLM | Mistral 7B (Ollama) |
-| Interfaz | Streamlit |
+### 1. Ingesta documental — `PyPDF` + `TextLoader`
+
+Se eligió `langchain_community.document_loaders` porque unifica la carga de PDF, TXT y Markdown bajo una misma interfaz, evitando escribir parsers separados para cada formato. Los PDFs se limitan a 15 páginas para no saturar el embedding con contenido redundante (preámbulos legales extensos).
+
+### 2. Fragmentación (chunking) — `RecursiveCharacterTextSplitter`
+
+- **Tamaño: 500 caracteres** — suficiente para contener un artículo legal completo con sus incisos. Fragmentos más grandes diluyen la precisión semántica; más chicos pierden contexto jurídico.
+- **Solapamiento: 100 caracteres** — evita que un artículo cortado en el borde de un chunk pierda la conexión con sus incisos. El 20% de overlap es un balance estándar entre redundancia y coherencia.
+- **Separadores**: `\n\n` → `\n` → `. ` → `espacio` — prioriza cortes en párrafos y oraciones antes que partir palabras, respetando la estructura natural del texto legal.
+
+### 3. Embeddings — `nomic-embed-text` (Ollama)
+
+Se eligió un modelo local en vez de APIs externas (OpenAI, Cohere) por tres razones: **(a)** los documentos legales pueden contener información sensible que no debe salir del entorno local, **(b)** elimina la dependencia de conexión a internet y costos por token, y **(c)** `nomic-embed-text` genera vectores de 768 dimensiones con buen rendimiento en español jurídico, validado empíricamente con los scores de similitud obtenidos (0.64–0.72 en fragmentos relevantes).
+
+### 4. Base vectorial — `ChromaDB`
+
+ChromaDB se prefirió sobre FAISS porque: **(a)** es persistente por defecto — los embeddings sobreviven a reinicios sin configuración adicional, **(b)** almacena metadata (fuente, página) junto a cada vector, permitiendo mostrar las fuentes en la respuesta, y **(c)** se integra nativamente con LangChain mediante `langchain-chroma`, simplificando el pipeline.
+
+### 5. Recuperación — búsqueda por similitud de coseno
+
+- **Top-K = 3** — recuperar solo 3 fragmentos reduce ruido. Con K=4 aparecían fragmentos de leyes no relacionadas (ej: Ley 21.719 en consultas laborales).
+- **Threshold = 0.64** — filtro empírico: los fragmentos relevantes puntúan ≥0.64, mientras que los de otras leyes quedan en ~0.63 o menos. Este umbral se ajustó iterativamente probando consultas de los 3 escenarios.
+
+### 6. Generación — `Mistral 7B` (Ollama)
+
+Mistral 7B se eligió porque: **(a)** cumple el requisito de ≤7B parámetros, **(b)** tiene buen desempeño en español a pesar de ser un modelo multilingual, y **(c)** corre localmente en Ollama sin GPU gracias a su tamaño contenido (~4 GB). La temperatura se fijó en 0.1 para minimizar alucinaciones y mantener respuestas deterministas basadas estrictamente en el contexto recuperado.
+
+### 7. Interfaz — `Streamlit`
+
+Streamlit permite construir una UI web funcional en un solo archivo Python, con componentes nativos de chat (`st.chat_message`, `st.chat_input`) que reflejan el flujo conversacional del asistente sin necesidad de escribir HTML/JS.
 
 ## 📁 Corpus Documental
 
