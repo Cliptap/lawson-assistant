@@ -11,14 +11,17 @@ from langchain_core.runnables import RunnablePassthrough
 CHROMA_DIR = "chroma_db"
 EMBEDDING_MODEL = "nomic-embed-text"
 LLM_MODEL = "mistral"
-TOP_K = 4
-SIMILARITY_THRESHOLD = 0.3
+TOP_K = 3
+SIMILARITY_THRESHOLD = 0.64
 
 PROMPT_TEMPLATE = """Eres un asistente legal especializado. Responde la pregunta basandote UNICAMENTE en el contexto legal proporcionado a continuacion.
 
-Si el contexto no contiene informacion suficiente para responder, indica claramente: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
-
-Responde en espanol, de forma clara y precisa. Cita los articulos y leyes mencionados en el contexto cuando corresponda.
+REGLAS:
+1. Si el contexto no contiene informacion suficiente para responder, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
+2. Descarta fragmentos de leyes o documentos que no guarden relacion directa con la pregunta.
+3. Cita SIEMPRE la ley especifica y el numero de articulo correspondiente (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
+4. Si un fragmento no menciona un numero de articulo o ley, no lo uses para responder.
+5. Responde en espanol, de forma clara y precisa.
 
 Contexto:
 {context}

@@ -31,14 +31,17 @@ LLM_MODEL = "mistral"
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 100
 MAX_PDF_PAGES = 15
-TOP_K = 4
-SIMILARITY_THRESHOLD = 0.3
+TOP_K = 3
+SIMILARITY_THRESHOLD = 0.64
 
 PROMPT_TEMPLATE = """Eres un asistente legal especializado. Responde la pregunta basandote UNICAMENTE en el contexto legal proporcionado a continuacion.
 
-Si el contexto no contiene informacion suficiente para responder, indica claramente: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
-
-Responde en espanol, de forma clara y precisa. Cita los articulos y leyes mencionados en el contexto cuando corresponda.
+REGLAS:
+1. Si el contexto no contiene informacion suficiente para responder, indica: "No encontre informacion suficiente en los documentos disponibles para responder esta consulta."
+2. Descarta fragmentos de leyes o documentos que no guarden relacion directa con la pregunta.
+3. Cita SIEMPRE la ley especifica y el numero de articulo correspondiente (ej: "Articulo 20 de la Ley 19.496 de Proteccion de los Derechos de los Consumidores").
+4. Si un fragmento no menciona un numero de articulo o ley, no lo uses para responder.
+5. Responde en espanol, de forma clara y precisa.
 
 Contexto:
 {context}
@@ -67,7 +70,7 @@ HIDE_ANCHORS_CSS = """
 <style>
     .stAppDeployButton { display: none; }
     h1 > a, h2 > a, h3 > a, h4 > a { display: none !important; }
-    /* Boton eliminar: afuera a la izquierda, invisible hasta hover */
+    /* Boton eliminar: esquina superior derecha, invisible hasta hover */
     [data-testid="stChatMessage"] {
         position: relative !important;
     }
@@ -75,8 +78,8 @@ HIDE_ANCHORS_CSS = """
         opacity: 0;
         transition: opacity 0.15s;
         position: absolute !important;
-        left: -20px !important;
-        top: 6px !important;
+        right: 4px !important;
+        top: 4px !important;
         z-index: 5;
     }
     [data-testid="stChatMessage"]:hover .stButton {
@@ -104,10 +107,15 @@ HIDE_ANCHORS_CSS = """
 
 
 def format_docs(docs):
-    return "\n\n".join(
-        f"[Fuente: {doc.metadata.get('source', 'desconocida')}]\n{doc.page_content}"
-        for doc in docs
-    )
+    parts = []
+    for doc in docs:
+        src = doc.metadata.get("source", "desconocida")
+        page = doc.metadata.get("page", None)
+        ref = src
+        if page is not None:
+            ref += f", p. {page}"
+        parts.append(f"[Documento: {ref}]\n{doc.page_content}")
+    return "\n\n".join(parts)
 
 
 @st.cache_resource(show_spinner=False)
@@ -251,7 +259,7 @@ def mostrar_chat():
         q_msg = st.session_state.messages[i]
 
         with st.chat_message("user"):
-            if st.button("✕", key=f"del_{i}", help="Eliminar"):
+            if st.button("✕", key=f"del_{i}"):
                 st.session_state.confirm_delete = i
                 st.rerun()
             st.markdown(q_msg["content"])
