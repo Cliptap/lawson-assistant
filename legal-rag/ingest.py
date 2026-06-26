@@ -64,9 +64,17 @@ def main():
     embeddings = OllamaEmbeddings(model=EMBEDDING_MODEL)
 
     if os.path.exists(CHROMA_DIR):
-        import shutil
-        shutil.rmtree(CHROMA_DIR)
-        print(f"  Base vectorial anterior eliminada.")
+        import chromadb
+        try:
+            client = chromadb.PersistentClient(path=CHROMA_DIR)
+            for col in client.list_collections():
+                try:
+                    client.delete_collection(col.name)
+                except Exception:
+                    pass
+            print(f"  Colecciones anteriores eliminadas.")
+        except Exception:
+            pass
 
     vectorstore = Chroma.from_documents(
         documents=chunks,
