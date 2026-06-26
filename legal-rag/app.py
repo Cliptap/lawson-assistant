@@ -68,8 +68,9 @@ EJEMPLOS = {
 
 HIDE_ANCHORS_CSS = """
 <style>
-    .stAppDeployButton { display: none; }
-    h1 > a, h2 > a, h3 > a, h4 > a { display: none !important; }
+    .stDeployButton { display: none !important; }
+    .stAppDeployButton { display: none !important; }
+    h1 a, h2 a, h3 a, h4 a { display: none !important; }
     /* Boton eliminar: esquina superior derecha, invisible hasta hover */
     [data-testid="stChatMessage"] {
         position: relative !important;
